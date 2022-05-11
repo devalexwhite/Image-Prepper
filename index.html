@@ -1,0 +1,335 @@
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs" defer></script>
+
+    <title>Image Prep</title>
+  </head>
+  <body>
+    <div x-data="app()" class="max-w-xl mx-auto my-16 relative">
+      <div class="w-full flex justify-between items-center mb-8">
+        <h1 class="max-w-xs font-black text-2xl text-purple-800">Microsite Image Prep Tool</h1>
+        <button x-show="imageUrl != undefined" @click="onReset()" id="restart-button" class="px-6 py-4 font-bold text-center rounded shadow bg-gradient-to-r from-red-400 to-red-500 text-white">
+          Restart
+        </button>
+      </div>
+
+      <div x-show="loading" style="z-index: 100;" class="fixed w-screen h-screen top-0 left-0 right-0 bottom-0 flex items-center justify-center">
+        <div class="absolute bg-gray-700 opacity-80 w-full h-full">
+        </div>
+        <div class="lds-roller"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+      </div>
+      <div x-show="fileUrl == undefined">
+        <input type="file" x-model="fileUrl" x-ref="fileInput" @change="onUpload()" class="w-full border border-2 border-dashed border-blue-500 flex flex-col items-center justify-center py-32 hover:bg-gray-200 text-center"></input>
+      </div>
+
+      <div class="relative">
+        <img x-show="imageUrl != undefined" x-bind:src="imageUrl" x-bind:width="processedUrl == undefined ? 600 : 400" x-ref="originalImage" x-bind:class="`z-0 mx-auto rounded shadow mb-8 ${processedUrl != undefined ? ' opacity-25 ' : ''}`" />
+        <div x-show="processedUrl != undefined" class="absolute top-10" style="min-height: 100px;">
+          <div class="relative">
+            <img x-bind:src="processedUrl" width="600" class="z-10 mx-auto rounded shadow-xl" x-ref="processedImage"/>
+            <div class="bottom-0 w-full py-4 px-2 absolute z-20 bg-black opacity-80 text-white font-bold text-sm">
+              <span x-text="`Size: ${processedWidth}x${processedHeight}`"></span>
+            </div>
+          </div>
+          <div class="flex items-center justify-center mt-8">
+            <button @click="onDownload" x-show="processedUrl != undefined" class="px-16 py-4 rounded shadow-xl mb-8 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white font-bold text-xl">Download</button>
+          </div>
+        </div>
+      </div>
+
+      <ul x-show="imageUrl != undefined && processedUrl == undefined" class="grid grid-cols-3 gap-6">
+        <template x-for="[key, preset] in Object.entries(presets)">
+          <li class="cursor-pointer w-full h-full flex justify-center items-center text-center shadow hover:shadow-lg border border-2 border-blue-700 p-8 rounded font-bold text-xl">
+            <button @click="onProcess(key)">
+              <span x-text="key" class="block text-purple-800 text-lg font-bold mb-2 capitalize"></span>
+              <span x-text="`${preset.minW}x${preset.minH} or larger at ${preset.quality * 100}% quality`" class="text-gray-600 font-light text-xs"></span>
+            </button>
+          </li>
+        </template>
+      </ul>
+
+      <div class="mt-8" x-show="imageUrl != undefined && processedUrl == undefined">
+        <button @click="showTools = !showTools" class="text-xl font-semibold text-blue-800" x-text="showTools ? '- Hide options' : '+ Show options'"></button>
+        <div class="mt-4 pl-6" x-show="showTools">
+          <div class="relative flex items-start">
+            <div class="flex items-center h-5">
+              <input x-model="invert" id="invert" name="invert[" type="checkbox" class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded">
+            </div>
+            <div class="ml-3 text-sm">
+              <label for="invert" class="font-medium text-gray-700">Invert color</label>
+              <p class="text-gray-500">Invert the colors of the image. Useful for turning a light logo into a dark one.</p>
+            </div>
+          </div>
+
+          <div class="sm:col-span-6 mt-6">
+            <label for="padding" class="block text-sm font-medium text-gray-700"> Padding (in pixels) </label>
+            <p class="mb-2 text-sm text-gray-500">Add equal padding to an image.</p>
+            <div class="mt-1">
+              <input x-model="padding" id="padding" value="0" name="padding" type="number" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-16 pl-1 pr-2 py-1 sm:text-sm border border-gray-300 rounded-md"></textarea>
+            </div>
+          </div>
+
+          <div class="sm:col-span-6 mt-6">
+            <label for="bgcolor" class="block text-sm font-medium text-gray-700"> Background color </label>
+            <p class="mb-2 text-sm text-gray-500">Add a background color behind an image. Useful with the padding option, or transparent images.</p>
+            <div class="mt-1 flex flex-row">
+              <input x-model="bgcolor" id="bgcolor" name="bgcolor" type="color" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-8 h-8 rounded-md  sm:text-sm  mr-4"></textarea>
+              <input x-model="bgcolor" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-32 py-1 px-2 sm:text-sm border border-gray-300 rounded-md" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        const app = () => ({
+          fullImage: undefined,
+          processedWidth: 0,
+          processedHeight: 0,
+          fileUrl: undefined,
+          imageUrl: undefined,
+          processedUrl: undefined,
+          padding: 0,
+          invert: false,
+          bgcolor: "#ffffff",
+          showTools: false,
+          loading: false,
+          presets: {
+            logo: {
+              minW: 400,
+              minH: 150,
+              maxW: 1000,
+              maxH: 1000,
+              quality: 0.8
+            },
+            cta: {
+              minW: 1500,
+              minH: 500,
+              maxW: 1925,
+              maxH: 1100,
+              quality: 0.5
+            },
+            carousel: {
+              minW: 1000,
+              minH: 1000,
+              maxW: 2000,
+              maxH: 2000,
+              quality: 0.8
+            }
+          },
+          getImageName: function() {
+            if (this.fileUrl == undefined) return ""
+            return this.fileUrl.substring(this.fileUrl.lastIndexOf('\\') + 1, this.fileUrl.lastIndexOf('.'));
+          },
+          onReset: function() {
+            this.imageUrl = undefined
+            this.processedUrl = undefined
+            this.loading = false
+            this.fileUrl = undefined
+          },
+          onUpload: function()
+          {
+            this.loading = true
+            const file = this.$refs.fileInput.files[0]
+
+            var reader = new FileReader();
+
+            reader.onload = function (e) {
+              const img = document.createElement("img")
+              img.onload = function(e) {
+                this.fullImage = e.target
+                this.loading = false
+              }.bind(this)
+
+              img.src = e.target.result
+
+              this.imageUrl = e.target.result
+              
+            }.bind(this)
+
+            reader.readAsDataURL(file)
+          },
+          onProcess: function(key) {
+            this.loading = true
+            
+            const canvas = document.createElement("canvas")
+            const {minW, minH, maxW, maxH, quality} = this.presets[key]
+            const {naturalWidth, naturalHeight} = this.fullImage
+            const ratio = naturalWidth / naturalHeight
+            
+            // Resize
+            let targetWidth = naturalWidth, targetHeight = naturalHeight
+            
+            if (naturalWidth > maxW && naturalHeight > maxH && naturalWidth >= naturalHeight) {
+              targetWidth = maxH * ratio
+              targetHeight = maxH
+            } else if (naturalWidth > maxW && naturalHeight > maxH && naturalWidth < naturalHeight) {
+              targetWidth = maxW
+              targetHeight = maxW / ratio
+            } else if (naturalWidth < minW) {
+              targetWidth = minW
+              targetHeight = minW / ratio
+
+              if (targetHeight < minH) {
+                const r = minH - targetHeight
+                targetWidth += r
+                targetHeight = (minW + r) / ratio
+              }
+            } else if (naturalHeight < minH) {
+              targetWidth = minH * ratio
+              targetHeight = minH
+
+              if (targetWidth < minW) {
+                const r = minW - targetWidth
+                targetHeight += r
+                targetWidth = (minH + r) * ratio
+              }
+            }
+            
+            canvas.width = targetWidth
+            canvas.height = targetHeight
+
+            let context = canvas.getContext("2d")
+
+            if (this.invert) context.filter = 'invert(1)'
+
+            context.drawImage(this.fullImage, 0, 0, targetWidth, targetHeight)
+
+
+            const resizedImage = document.createElement("img")
+
+            resizedImage.onload = function(e) {
+              // Crop
+              let dX = 0, dY = 0
+              let oX = 0, oY = 0
+
+              if (canvas.width > maxW) {
+                dX = (maxW - canvas.width) / 2 * -1
+                canvas.width = maxW
+              }
+
+              if (canvas.height > maxH) {
+                dY = (maxH - canvas.height) / 2 * -1
+                canvas.height = maxH
+              }
+
+              context = canvas.getContext("2d")
+
+              context.clearRect(0, 0, canvas.width, canvas.height)
+
+              context.fillStyle = this.bgcolor
+              context.fillRect(0,0,canvas.width, canvas.height)
+
+              context.drawImage(e.target, dX, dY, canvas.width, canvas.height, this.padding, this.padding, canvas.width - this.padding * 2, canvas.height - this.padding * 2)
+              
+              this.processedUrl = canvas.toDataURL("image/jpeg", quality)
+
+              this.processedWidth = canvas.width
+              this.processedHeight = canvas.height
+
+              this.loading = false
+            }.bind(this)
+
+            resizedImage.src = canvas.toDataURL("image/jpeg", quality)
+          },
+          onDownload: function() {
+            const a = document.createElement("a")
+            a.href = this.processedUrl
+            a.download = `microsite-ready-${this.getImageName()}`
+            a.click()
+          }
+        });
+      </script>
+      <style>
+        .lds-roller {
+  display: inline-block;
+  position: relative;
+  width: 80px;
+  height: 80px;
+}
+.lds-roller div {
+  animation: lds-roller 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+  transform-origin: 40px 40px;
+}
+.lds-roller div:after {
+  content: " ";
+  display: block;
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #fff;
+  margin: -4px 0 0 -4px;
+}
+.lds-roller div:nth-child(1) {
+  animation-delay: -0.036s;
+}
+.lds-roller div:nth-child(1):after {
+  top: 63px;
+  left: 63px;
+}
+.lds-roller div:nth-child(2) {
+  animation-delay: -0.072s;
+}
+.lds-roller div:nth-child(2):after {
+  top: 68px;
+  left: 56px;
+}
+.lds-roller div:nth-child(3) {
+  animation-delay: -0.108s;
+}
+.lds-roller div:nth-child(3):after {
+  top: 71px;
+  left: 48px;
+}
+.lds-roller div:nth-child(4) {
+  animation-delay: -0.144s;
+}
+.lds-roller div:nth-child(4):after {
+  top: 72px;
+  left: 40px;
+}
+.lds-roller div:nth-child(5) {
+  animation-delay: -0.18s;
+}
+.lds-roller div:nth-child(5):after {
+  top: 71px;
+  left: 32px;
+}
+.lds-roller div:nth-child(6) {
+  animation-delay: -0.216s;
+}
+.lds-roller div:nth-child(6):after {
+  top: 68px;
+  left: 24px;
+}
+.lds-roller div:nth-child(7) {
+  animation-delay: -0.252s;
+}
+.lds-roller div:nth-child(7):after {
+  top: 63px;
+  left: 17px;
+}
+.lds-roller div:nth-child(8) {
+  animation-delay: -0.288s;
+}
+.lds-roller div:nth-child(8):after {
+  top: 56px;
+  left: 12px;
+}
+@keyframes lds-roller {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+      </style>
+    </div>
+  </body>
+</html>
